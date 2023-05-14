@@ -1,0 +1,61 @@
+package main
+
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+
+	"github.com/gorilla/mux"
+)
+
+type weatherData struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Temperature int    `json:"temperature"`
+}
+
+func getWeather(city string) (*weatherData, error) {
+	resp, err := http.Get("http://api.openweathermap.org/data/2.5/weather?q=" + city + "&units=metric&appid=YOUR_API_KEY_HERE")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var data struct {
+		Name string `json:"name"`
+		Main struct {
+			Temp float64 `json:"temp"`
+		} `json:"main"`
+		Weather []struct {
+			Description string `json:"description"`
+		} `json:"weather"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, err
+	}
+
+	temperature := int(data.Main.Temp)
+	description := data.Weather[0].Description
+
+	return &weatherData{Name: data.Name, Description: description, Temperature: temperature}, nil
+}
+
+func getWeatherHandler(w http.ResponseWriter, r *http.Request) {
+	city := mux.Vars(r)["city"]
+	weather, err := getWeather(city)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(weather)
+}
+
+func main() {
+	r := mux.NewRouter()
+	r.HandleFunc("/weather/{city}", getWeatherHandler)
+
+	log.Fatal(http.ListenAndServe(":8080", r))
+}
